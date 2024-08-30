@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
+using System;
 
 public class PlayerMovement : MonoBehaviour
 {
@@ -106,7 +107,7 @@ public class PlayerMovement : MonoBehaviour
             rb.velocity = new Vector3(limitedVel.x, rb.velocity.y, limitedVel.z);
         }
 
-        text_speed.SetText("Speed: " + flatVel.magnitude);
+        //text_speed.SetText("Speed: " + flatVel.magnitude);
     }
 
     private void Jump()
