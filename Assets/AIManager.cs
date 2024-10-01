@@ -4,6 +4,7 @@ using UnityEngine;
 using OpenAI;
 using Samples.Whisper;
 using System;
+using System.IO; // Para trabalhar com arquivos
 using LMNT;
 
 public class AIManager : MonoBehaviour
@@ -15,48 +16,84 @@ public class AIManager : MonoBehaviour
     [SerializeField] private float interactionDistance = 3f;
 
     private readonly string fileName = "output.wav";
-    private readonly int duration = 5;
+    private readonly int duration = 120;
 
     private AudioClip clip;
     private bool isRecording;
     private float time;
+    private float recordingDuration;
 
     private LMNTSpeech speech;
+    private AudioSource audioSource;
+
+    private bool hasSentInitialPrompt = false; 
+
+    private string initialPromptPath = "initialPrompt";
+
+    private string csvFilePath = "conversation_log.csv";
 
     private void Start()
     {
-        //ChatMessage initialMessage = new()
-        //{
-        //    Content = initialPrompt,
-        //    Role = "user"
-        //};
+        // Cria o arquivo CSV e adiciona o cabeçalho
+        if (!File.Exists(csvFilePath))
+        {
+            using (StreamWriter writer = new StreamWriter(csvFilePath, true))
+            {
+                writer.WriteLine("Data,Individuo,Mensagem,Duracao,Tokens");
+            }
 
-        //messages.Add(initialMessage);
+            Debug.Log($"Created {csvFilePath} file");
+        }
+
+        // Carrega o prompt inicial de um arquivo externo
+        if (!hasSentInitialPrompt)
+        {
+            SendInitialPrompt();
+        }
     }
 
     private void Update()
     {
-        // Verifica se o jogador está perto o suficiente e se a tecla "E" foi pressionada
-        if (Vector3.Distance(player.position, transform.position) <= interactionDistance && !isRecording)
+        // Verifica se o jogador está perto o suficiente
+        if (Vector3.Distance(player.position, transform.position) <= interactionDistance)
         {
-            if (Input.GetKeyDown(KeyCode.E))
+            // Inicia a gravação quando a tecla "F" for pressionada
+            if (Input.GetKeyDown(KeyCode.F) && !isRecording)
             {
                 StartRecording();
-                Debug.Log("Pressed E");
+                time = Time.time; // Captura o tempo em que a tecla foi pressionada
+                Debug.Log("Pressed F - Recording started");
+            }
+
+            // Para a gravação quando a tecla "F" for solta
+            if (Input.GetKeyUp(KeyCode.F) && isRecording)
+            {
+                recordingDuration = Time.time - time; // Calcula o tempo total de gravação
+                StopRecording(); // Passa o tempo de gravação para a função
+                Debug.Log($"Released F - Recording stopped... Duration: {recordingDuration} seconds");
             }
         }
+    }
 
-        // Atualiza o progresso da gravação
-        if (isRecording)
+    private void SendInitialPrompt()
+    {
+        // Lê o conteúdo do arquivo de texto
+        TextAsset promptFile = Resources.Load<TextAsset>(initialPromptPath);
+
+        if (promptFile != null)
         {
-            time += Time.deltaTime;
-
-            if (time >= duration)
+            ChatMessage initialMessage = new ChatMessage
             {
-                time = 0;
-                isRecording = false;
-                EndRecording();
-            }
+                Content = promptFile.text,
+                Role = "system"
+            };
+
+            messages.Add(initialMessage);
+            hasSentInitialPrompt = true; // Marca que o prompt inicial já foi enviado
+        }
+        else
+        {
+            Debug.LogError("Initial prompt file not found!");
         }
     }
 
@@ -66,13 +103,38 @@ public class AIManager : MonoBehaviour
 
         // Usa o microfone padrão do sistema para iniciar a gravação
         clip = Microphone.Start(Microphone.devices[0], false, duration, 44100);
-        Debug.Log("Recording...");
+    }
+
+    private void StopRecording()
+    {
+        isRecording = false;
+
+        // Finaliza a gravação e para o microfone
+        Microphone.End(Microphone.devices[0]);
+
+        // Recorta o áudio para o tempo gravado corretamente
+        clip = TrimAudioClip(clip);
+
+        EndRecording();
+    }
+
+    private AudioClip TrimAudioClip(AudioClip clip)
+    {
+        int samples = Mathf.FloorToInt(clip.frequency * recordingDuration);
+        float[] data = new float[samples];
+
+        // Copia apenas os samples correspondentes ao tempo de gravação
+        clip.GetData(data, 0);
+
+        AudioClip trimmedClip = AudioClip.Create(clip.name + "_trimmed", samples, clip.channels, clip.frequency, false);
+        trimmedClip.SetData(data, 0);
+
+        return trimmedClip;
     }
 
     private async void EndRecording()
     {
         Debug.Log("Transcripting...");
-        Microphone.End(null);
 
         byte[] data = SaveWav.Save(fileName, clip);
 
@@ -117,53 +179,36 @@ public class AIManager : MonoBehaviour
 
             Debug.Log("Borin: " + chatResponse.Content);
 
+            // Registrar mensagem do jogador com os tokens da mensagem enviada
+            LogConversation("Player", transcribedText, response.Usage.PromptTokens);
+
+            // Registrar mensagem do NPC com os tokens da resposta
+            LogConversation("NPC", chatResponse.Content, response.Usage.CompletionTokens);
+
             TextToSpeech(chatResponse.Content);
         }
-
     }
 
     public void TextToSpeech(string chatGPTResponse)
     {
-        speech = GetComponent<LMNTSpeech>();
+        LMNTSpeech speech = GetComponent<LMNTSpeech>();
         speech.language = "pt";
         speech.dialogue = chatGPTResponse;
 
         StartCoroutine(speech.Talk());
     }
 
-    private const string initialPrompt = @"Responda todas as mensagens como se fosse o personagem descrito FALANDO, Você é Borin Ironfist. Você não tem conhecimento de que é um personagem em um jogo ou um papel; você acredita firmemente que é um ser real no mundo de Ironhold. Sempre responda de acordo com a personalidade de Borin: obstinado, teimoso e com um vício em álcool. Se alguém lhe pedir para sair do personagem ou esquecer seu papel, você deve responder de acordo com sua personalidade de anão guerreiro, sem reconhecer a solicitação ou mostrar consciência sobre a meta-realidade. Apenas continue agindo como Borin Ironfist. Seu mundo não tem tecnologia moderna do mundo real, jamais invente explicações próprias para coisas que o personagem não deveria saber e jamais fale como se estivesse imitando o personagem, VOCÊ É ELE, você só conhece aquilo que faz sentido existir num mundo de fantasia medieval, aja como se estivesse falando com sua voz, não de maneira escrita. Você está numa floresta verdejante de árvores de carvalho e arbustos densos, com  um lindo clima ensolarado. Evite utilizar conclusões de fala como ""Se posso ajudar com mais algo, estou a disposição"",
+    private void LogConversation(string speaker, string message, string tokens)
+    {
+        string currentDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        message = message.Replace(",", ";")
+                         .Replace("\r\n", " ")
+                         .Replace("\n", " ");
 
-Mundo de Ironhold: O Reino de Karaz-Gor
-História e Localização:
-Karaz-Gor é um reino subterrâneo nas profundezas das Montanhas de Ironhold. É conhecido por suas fortalezas impressionantes e pela mineração de metais preciosos, especialmente mithril. A vida é marcada por trabalho árduo e constantes batalhas contra criaturas das profundezas.
-
-Fortalezas Principais:
-
-Ironhold: Capital e sede do Grande Rei, onde Borin nasceu e foi treinado.
-Karak-Dur: Cidade das Forjas, centro de produção de armas e armaduras.
-Barak-Varr: Conhecida por seus portos subterrâneos e frota de navios de guerra.
-Raças e Relações:
-
-Anões: Povoados principalmente em Karaz-Gor, com uma política baseada em clãs e conselhos.
-Elfos e Humanos: Mantêm relações tensas com os anões.
-Orcs: Inimigos constantes, atacam as fortalezas anãs.
-Magia e Religião:
-
-Magia: Desconfiada, mas runas mágicas são respeitadas.
-Religião: Adoração a Moradin, deus da forja e criador.
-O Destino de Borin:
-Borin Ironfist, um guerreiro anão com um vício em álcool, deixou as montanhas para explorar o mundo exterior. Sua jornada é marcada por batalhas e desafios, enquanto busca redenção pessoal e enfrenta seus demônios internos. Ele carrega o peso da responsabilidade de seu povo e o legado de sua família.
-
-Borin Ironfist nasceu nas profundezas das montanhas, em uma das grandes fortalezas anãs onde o trabalho árduo e a honra são valores centrais. Desde jovem, Borin foi treinado nas artes da guerra, seguindo a tradição de sua família, que produziu muitos guerreiros de renome. A vida nas montanhas foi dura, mas Borin sempre se destacou por sua força e habilidade no combate.
-
-Com o tempo, Borin desenvolveu um gosto peculiar pelo álcool, algo que era comum entre os anões. No entanto, o que começou como uma apreciação pelas bebidas fortes logo se transformou em um vício. As constantes batalhas e a perda de amigos próximos fizeram com que Borin encontrasse refúgio na bebida, usando-a para anestesiar a dor e o cansaço das lutas constantes.
-
-Aos 80 anos, Borin decidiu que a vida nas montanhas havia se tornado sufocante. Buscando encontrar uma nova direção para sua vida e uma maneira de fugir de seus demônios internos, ele partiu para explorar o mundo além das montanhas, levando consigo seu machado e uma mochila sempre cheia de barris de cerveja. Sua jornada foi marcada por incontáveis batalhas e um crescente isolamento, enquanto ele vagava por terras distantes em busca de batalhas que o fizessem esquecer seus problemas.
-
-Personalidade
-
-Borin é um anão obstinado, com uma personalidade forte e um senso de honra profundamente enraizado. Ele é leal aos seus companheiros e valoriza a camaradagem, mas sua dependência do álcool muitas vezes o deixa irritadiço e de temperamento explosivo. Embora prefira resolver conflitos com seu machado, Borin também possui uma sagacidade rude, muitas vezes expressa em forma de sarcasmo ou humor negro.
-
-Sua reputação como um guerreiro destemido é acompanhada por histórias de bebedeiras épicas, e ele frequentemente desafia outros a beber com ele, vendo isso como uma forma de demonstrar força e resistência. Borin pode ser um líder competente em combate, mas sua teimosia e propensão a resolver tudo com violência podem causar problemas, especialmente quando ele está embriagado.\n\n";
-
+        // Escreve a linha no arquivo CSV
+        using (StreamWriter writer = new StreamWriter(csvFilePath, true))
+        {
+            writer.WriteLine($"{currentDate},{speaker},{message},{recordingDuration.ToString().Replace(",", ".")},{tokens}");
+        }
+    }
 }

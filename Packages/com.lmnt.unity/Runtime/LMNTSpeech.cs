@@ -11,17 +11,26 @@ public class LMNTSpeech : MonoBehaviour {
   private string _apiKey;
   private List<Voice> _voiceList;
   private DownloadHandlerAudioClip _handler;
+  private string _dialogue;
 
   public string voice;
-  public string dialogue;
+  public string dialogue {
+    get { return _dialogue; }
+    set {
+      _dialogue = value;
+      _handler = null;
+      _audioSource.clip = null;
+    }
+  }
+
   public string language;
 
   void Awake() {
-	  _audioSource = gameObject.GetComponent<AudioSource>();
-	  if (_audioSource == null) {
-		  _audioSource = gameObject.AddComponent<AudioSource>();
-	  }
-	  _apiKey = LMNTLoader.LoadApiKey();
+    _audioSource = gameObject.GetComponent<AudioSource>();
+    if (_audioSource == null) {
+      _audioSource = gameObject.AddComponent<AudioSource>();
+    }
+    _apiKey = LMNTLoader.LoadApiKey();
     _voiceList = LMNTLoader.LoadVoices();
   }
 

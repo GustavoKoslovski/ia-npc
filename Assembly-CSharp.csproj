@@ -105,6 +105,7 @@
     <None Include="Assets\ImportedAssets\TextMesh Pro\Resources\LineBreaking Following Characters.txt" />
     <None Include="Assets\Ultimate 10 Plus Shaders\Shaders\Lava3D.shader" />
     <None Include="Assets\Ultimate 10 Plus Shaders\Shaders\Force Field.shader" />
+    <None Include="Assets\Resources\initialPrompt.txt" />
     <None Include="Assets\ImportedAssets\TextMesh Pro\Shaders\TMP_SDF-Mobile Masking.shader" />
     <None Include="Assets\ImportedAssets\TextMesh Pro\Shaders\TMP_SDF Overlay.shader" />
     <None Include="Assets\ImportedAssets\TextMesh Pro\Shaders\TMP_Bitmap-Mobile.shader" />
